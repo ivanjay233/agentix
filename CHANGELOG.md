@@ -23,3 +23,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation** — README with quick-start, architecture overview, and CLI reference; CONTRIBUTING.md for contributors.
 - **Packaging** — PyPI-compatible `pyproject.toml` with dev extras.
 # agentix v0.1.1
+# agentix v0.1.2
