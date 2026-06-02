@@ -242,6 +242,43 @@ class Pipeline:
             return cls.from_yaml(fh.read())
 
     # ------------------------------------------------------------------
+    # JSON serialisation
+    # ------------------------------------------------------------------
+
+    def to_json(self) -> str:
+        """Serialize this pipeline to a JSON string.
+
+        Returns
+        -------
+        str
+            JSON representation suitable for saving to disk or transmission.
+        """
+        import json
+        data = {
+            "name": self.name,
+            "stages": self.stages,
+        }
+        return json.dumps(data, indent=2, default=str)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "Pipeline":
+        """Deserialize a pipeline from a JSON string.
+
+        Parameters
+        ----------
+        json_str : str
+            Valid JSON content representing a pipeline.
+
+        Returns
+        -------
+        Pipeline
+            A new pipeline instance reconstructed from the JSON.
+        """
+        import json
+        data = json.loads(json_str)
+        return cls(name=data.get("name", "unnamed"), stages=data.get("stages", []))
+
+    # ------------------------------------------------------------------
     # Built-in
     # ------------------------------------------------------------------
 
