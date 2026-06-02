@@ -1,5 +1,13 @@
 """
 agentix CLI — click-based command-line interface.
+
+Usage::
+
+    agentix init my_pipeline
+    agentix run my_pipeline --inputs '{"topic": "hello"}'
+    agentix board my_pipeline
+    agentix status my_pipeline
+    agentix pipelines
 """
 
 from __future__ import annotations
@@ -25,14 +33,21 @@ engine = OrchestratorEngine()
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _show_board(board: KanbanBoard) -> None:
+    """Render a Kanban board as a Rich table.
+
+    Parameters
+    ----------
+    board : KanbanBoard
+        The board to display.
+    """
     state = board.get_board_state()
     table = Table(title=f"Kanban Board: {board.name}", box=box.ROUNDED)
 
     for col in board.VALID_COLUMNS:
         table.add_column(col.capitalize().replace("_", " "), style="bold")
 
-    # Build rows — one task per row, longest column determines row count
     max_items = max(len(state[c]) for c in board.VALID_COLUMNS) if state else 0
     for i in range(max_items):
         row: list[str] = []
@@ -52,6 +67,7 @@ def _show_board(board: KanbanBoard) -> None:
 # Commands
 # ---------------------------------------------------------------------------
 
+
 @click.group()
 @click.version_option(__version__, prog_name="agentix")
 def cli() -> None:
@@ -62,11 +78,14 @@ def cli() -> None:
 @click.argument("name", default="default", required=False)
 @click.option("--stages", "-s", help="JSON string or file path listing stages")
 def init(name: str, stages: Optional[str]) -> None:
-    """Initialise a new pipeline and board."""
+    """Initialise a new pipeline and board.
+
+    The ``--stages`` option accepts either a JSON string inline or a path
+    to a JSON file containing the stage definitions.
+    """
     stage_list: list[Dict[str, Any]] = []
 
     if stages:
-        # Try as file, then as inline JSON
         if os.path.isfile(stages):
             with open(stages) as fh:
                 stage_list = json.load(fh)
@@ -81,7 +100,11 @@ def init(name: str, stages: Optional[str]) -> None:
 @click.argument("pipeline_name", default="default", required=False)
 @click.option("--inputs", "-i", help="JSON string of input variables")
 def run(pipeline_name: str, inputs: Optional[str]) -> None:
-    """Execute a pipeline."""
+    """Execute a pipeline.
+
+    Provide input variables via ``--inputs`` as a JSON object,
+    e.g. ``--inputs '{"topic": "hello"}'``.
+    """
     import asyncio
 
     parsed_inputs: Dict[str, Any] = {}
@@ -97,7 +120,10 @@ def run(pipeline_name: str, inputs: Optional[str]) -> None:
 @cli.command()
 @click.argument("pipeline_name", default="default", required=False)
 def board(pipeline_name: str) -> None:
-    """Display the Kanban board for a pipeline."""
+    """Display the Kanban board for a pipeline.
+
+    Shows tasks grouped by column (todo, in_progress, review, done).
+    """
     try:
         b = engine._boards[pipeline_name]
     except KeyError:
@@ -109,7 +135,11 @@ def board(pipeline_name: str) -> None:
 @cli.command()
 @click.argument("pipeline_name", default="default", required=False)
 def status(pipeline_name: str) -> None:
-    """Show pipeline execution status."""
+    """Show pipeline execution status.
+
+    Displays whether the pipeline is running or stopped, plus a table
+    of its stages with agent types and dependencies.
+    """
     try:
         pipeline = engine.get_pipeline(pipeline_name)
     except KeyError:
@@ -144,6 +174,24 @@ def pipelines() -> None:
     console.print("[bold]Registered pipelines:[/bold]")
     for n in names:
         console.print(f"  • {n}")
+
+
+@cli.command()
+@click.argument("pipeline_name", default="default", required=False)
+@click.option("--output", "-o", type=click.Choice(["yaml", "json"]), default="yaml", help="Output format")
+def export(pipeline_name: str, output: str) -> None:
+    """Export a pipeline definition to stdout."""
+    try:
+        pipeline = engine.get_pipeline(pipeline_name)
+    except KeyError:
+        console.print(f"[red]✗[/red] Pipeline '{pipeline_name}' not found.")
+        return
+
+    if output == "yaml":
+        console.print(pipeline.to_yaml())
+    else:
+        data = {"name": pipeline.name, "stages": pipeline.stages}
+        console.print(json.dumps(data, indent=2))
 
 
 if __name__ == "__main__":

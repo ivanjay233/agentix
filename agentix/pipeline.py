@@ -1,5 +1,9 @@
 """
 Pipeline — defines stages with dependencies, serialized to/from YAML.
+
+A pipeline is a directed graph of processing stages.  Each stage
+specifies its agent type, input/output keys, and optional dependencies
+on other stages.  Use :meth:`topological_sort` to resolve execution order.
 """
 
 from __future__ import annotations
@@ -13,11 +17,26 @@ class Pipeline:
     """A pipeline represents a directed graph of processing stages.
 
     Each stage carries:
-      - name         : unique identifier within the pipeline
-      - agent_type   : which agent class handles this stage
-      - input_keys   : context keys consumed by this stage
-      - output_keys  : context keys produced by this stage
-      - depends_on   : list of stage names that must complete first
+      - ``name``         : unique identifier within the pipeline
+      - ``agent_type``   : which agent class handles this stage
+      - ``input_keys``   : context keys consumed by this stage
+      - ``output_keys``  : context keys produced by this stage
+      - ``depends_on``   : list of stage names that must complete first
+
+    Parameters
+    ----------
+    name : str
+        Human-readable identifier for this pipeline.
+    stages : list of dict, optional
+        Initial list of stage definitions (can be added later).
+
+    Examples
+    --------
+    >>> p = Pipeline("etl")
+    >>> p.add_stage("extract", "reader", output_keys=["raw"])
+    >>> p.add_stage("transform", "processor", input_keys=["raw"], output_keys=["clean"], depends_on=["extract"])
+    >>> p.topological_sort()
+    ['extract', 'transform']
     """
 
     def __init__(self, name: str, stages: Optional[List[Dict[str, Any]]] = None) -> None:
@@ -36,7 +55,26 @@ class Pipeline:
         output_keys: Optional[List[str]] = None,
         depends_on: Optional[List[str]] = None,
     ) -> None:
-        """Append a new stage to this pipeline."""
+        """Append a new stage to this pipeline.
+
+        Parameters
+        ----------
+        name : str
+            Unique stage name (must not already exist in this pipeline).
+        agent_type : str
+            Identifier of the agent that will handle this stage.
+        input_keys : list of str, optional
+            Context keys consumed by this stage.
+        output_keys : list of str, optional
+            Context keys produced by this stage.
+        depends_on : list of str, optional
+            Names of stages that must complete before this one runs.
+
+        Raises
+        ------
+        ValueError
+            If a stage with ``name`` already exists in this pipeline.
+        """
         if self._find_stage(name) is not None:
             raise ValueError(f"A stage named '{name}' already exists in pipeline '{self.name}'.")
 
@@ -50,14 +88,41 @@ class Pipeline:
         self.stages.append(stage)
 
     def remove_stage(self, name: str) -> None:
-        """Remove a stage by name."""
+        """Remove a stage by name.
+
+        Parameters
+        ----------
+        name : str
+            Name of the stage to remove.
+
+        Raises
+        ------
+        KeyError
+            If no stage with ``name`` exists.
+        """
         stage = self._find_stage(name)
         if stage is None:
             raise KeyError(f"Stage '{name}' not found in pipeline '{self.name}'.")
         self.stages.remove(stage)
 
     def get_stage(self, name: str) -> Dict[str, Any]:
-        """Retrieve a stage definition by name."""
+        """Retrieve a stage definition by name.
+
+        Parameters
+        ----------
+        name : str
+            Name of the stage to retrieve.
+
+        Returns
+        -------
+        dict
+            The stage definition (contains keys: name, agent_type, etc.).
+
+        Raises
+        ------
+        KeyError
+            If no stage with ``name`` exists.
+        """
         stage = self._find_stage(name)
         if stage is None:
             raise KeyError(f"Stage '{name}' not found in pipeline '{self.name}'.")
@@ -74,13 +139,30 @@ class Pipeline:
     # ------------------------------------------------------------------
 
     def dependency_graph(self) -> Dict[str, List[str]]:
-        """Return a mapping of stage -> list of stages it depends on."""
+        """Return a mapping of stage -> list of stages it depends on.
+
+        Returns
+        -------
+        dict of str -> list of str
+            For each stage name, the list of upstream stage names it depends on.
+        """
         return {s["name"]: list(s.get("depends_on", [])) for s in self.stages}
 
     def topological_sort(self) -> List[str]:
-        """Return stage names in dependency order (topological sort)."""
+        """Return stage names in dependency order (Kahn's algorithm).
+
+        Returns
+        -------
+        list of str
+            Stage names ordered so that every stage appears after its
+            dependencies.
+
+        Raises
+        ------
+        RuntimeError
+            If a cycle is detected in the dependency graph.
+        """
         graph = self.dependency_graph()
-        # in_degree[name] = how many stages must come before 'name'
         in_degree: Dict[str, int] = {name: len(deps) for name, deps in graph.items()}
 
         queue = [name for name, deg in in_degree.items() if deg == 0]
@@ -89,14 +171,12 @@ class Pipeline:
         while queue:
             node = queue.pop(0)
             ordered.append(node)
-            # Find all stages that depend on 'node' and decrement their in_degree
             for name, deps in graph.items():
                 if node in deps:
                     in_degree[name] -= 1
                     if in_degree[name] == 0:
                         queue.append(name)
 
-        # Check for cycles
         if len(ordered) != len(graph):
             raise RuntimeError(f"Cycle detected in pipeline '{self.name}'.")
 
@@ -107,7 +187,13 @@ class Pipeline:
     # ------------------------------------------------------------------
 
     def to_yaml(self) -> str:
-        """Serialize this pipeline to a YAML string."""
+        """Serialize this pipeline to a YAML string.
+
+        Returns
+        -------
+        str
+            YAML representation suitable for saving to disk or transmission.
+        """
         data = {
             "name": self.name,
             "stages": self.stages,
@@ -116,7 +202,23 @@ class Pipeline:
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> "Pipeline":
-        """Deserialize a pipeline from a YAML string."""
+        """Deserialize a pipeline from a YAML string.
+
+        Parameters
+        ----------
+        yaml_str : str
+            Valid YAML content representing a pipeline.
+
+        Returns
+        -------
+        Pipeline
+            A new pipeline instance reconstructed from the YAML.
+
+        Raises
+        ------
+        ValueError
+            If the YAML root is not a mapping.
+        """
         data = yaml.safe_load(yaml_str)
         if not isinstance(data, dict):
             raise ValueError("YAML root must be a mapping.")
@@ -124,7 +226,18 @@ class Pipeline:
 
     @classmethod
     def from_yaml_file(cls, path: str) -> "Pipeline":
-        """Load a pipeline from a YAML file on disk."""
+        """Load a pipeline from a YAML file on disk.
+
+        Parameters
+        ----------
+        path : str
+            Filesystem path to a YAML file.
+
+        Returns
+        -------
+        Pipeline
+            A new pipeline instance reconstructed from the file contents.
+        """
         with open(path, "r") as fh:
             return cls.from_yaml(fh.read())
 

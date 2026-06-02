@@ -1,5 +1,8 @@
 """
 OrchestratorEngine — manages agent lifecycle and pipeline execution.
+
+The central coordinator that registers pipelines, creates Kanban boards,
+and drives stage-by-stage execution through the agent framework.
 """
 
 from __future__ import annotations
@@ -15,9 +18,24 @@ logger = logging.getLogger("agentix")
 
 
 class OrchestratorEngine:
-    """Central orchestrator that manages pipelines, agents, and boards."""
+    """Central orchestrator that manages pipelines, agents, and boards.
+
+    Register pipelines via :meth:`create_pipeline`, then execute them
+    asynchronously with :meth:`run`.  Use :meth:`pause` / :meth:`resume`
+    to control execution flow and :meth:`shutdown` for clean teardown.
+
+    Examples
+    --------
+    >>> engine = OrchestratorEngine()
+    >>> engine.create_pipeline("demo", stages=[{"name": "echo", "agent_type": "pass-through"}])
+    >>> import asyncio
+    >>> result = asyncio.run(engine.run("demo", inputs={"msg": "hello"}))
+    >>> result["msg"]
+    'hello'
+    """
 
     def __init__(self) -> None:
+        """Initialise an empty orchestrator with no pipelines or boards."""
         self._pipelines: Dict[str, Pipeline] = {}
         self._boards: Dict[str, KanbanBoard] = {}
         self._running: bool = False
@@ -31,12 +49,32 @@ class OrchestratorEngine:
     def create_pipeline(self, name: str, stages: Optional[List[Dict[str, Any]]] = None) -> Pipeline:
         """Create and register a new pipeline.
 
+        Automatically creates a companion Kanban board named ``{name}_board``.
+
         Parameters
         ----------
         name : str
-            Unique pipeline identifier.
+            Unique pipeline identifier.  Must not already exist.
         stages : list of dict, optional
-            Each dict should contain keys: name, agent_type, input_keys, output_keys, depends_on.
+            Each dict should contain keys:
+            ``name``, ``agent_type``, ``input_keys``, ``output_keys``, ``depends_on``.
+
+        Returns
+        -------
+        Pipeline
+            The newly created pipeline instance.
+
+        Raises
+        ------
+        ValueError
+            If a pipeline with ``name`` already exists.
+
+        Examples
+        --------
+        >>> engine = OrchestratorEngine()
+        >>> p = engine.create_pipeline("gen", stages=[{"name": "write", "agent_type": "codex"}])
+        >>> p.name
+        'gen'
         """
         if name in self._pipelines:
             raise ValueError(f"Pipeline '{name}' already exists.")
@@ -49,14 +87,58 @@ class OrchestratorEngine:
         return pipeline
 
     def get_pipeline(self, name: str) -> Pipeline:
-        """Retrieve a registered pipeline by name."""
+        """Retrieve a registered pipeline by name.
+
+        Parameters
+        ----------
+        name : str
+            Name of the pipeline to retrieve.
+
+        Returns
+        -------
+        Pipeline
+            The matching pipeline instance.
+
+        Raises
+        ------
+        KeyError
+            If no pipeline with ``name`` is registered.
+        """
         if name not in self._pipelines:
             raise KeyError(f"Pipeline '{name}' not found.")
         return self._pipelines[name]
 
     def list_pipelines(self) -> List[str]:
-        """Return names of all registered pipelines."""
-        return list(self._pipelines.keys())
+        """Return names of all registered pipelines.
+
+        Returns
+        -------
+        list of str
+            Alphabetically sorted pipeline names.
+        """
+        return sorted(self._pipelines.keys())
+
+    def get_board(self, pipeline_name: str) -> KanbanBoard:
+        """Return the Kanban board associated with a pipeline.
+
+        Parameters
+        ----------
+        pipeline_name : str
+            Name of the pipeline whose board to retrieve.
+
+        Returns
+        -------
+        KanbanBoard
+            The companion board for the given pipeline.
+
+        Raises
+        ------
+        KeyError
+            If the pipeline has not been registered.
+        """
+        if pipeline_name not in self._boards:
+            raise KeyError(f"No board found for pipeline '{pipeline_name}'.")
+        return self._boards[pipeline_name]
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -65,17 +147,36 @@ class OrchestratorEngine:
     async def run(self, pipeline_name: str, inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute a pipeline asynchronously.
 
+        Iterates over each stage (in registration order), resolves dependencies
+        from the shared context, delegates processing to the stage's agent, and
+        stores outputs back into the context.
+
         Parameters
         ----------
         pipeline_name : str
             Name of the pipeline to run.
         inputs : dict, optional
-            Initial data to seed the pipeline context.
+            Initial data to seed the pipeline context (e.g. ``{"topic": "hello"}``).
 
         Returns
         -------
         dict
-            Final context with outputs from every stage.
+            Final context dictionary containing outputs from every stage.
+
+        Raises
+        ------
+        KeyError
+            If the pipeline does not exist.
+        asyncio.CancelledError
+            If the pipeline is cancelled during execution.
+
+        Examples
+        --------
+        >>> engine = OrchestratorEngine()
+        >>> engine.create_pipeline("t", stages=[{"name": "s1", "agent_type": "x", "output_keys": ["out"]}])
+        >>> result = await engine.run("t", inputs={"in": 1})
+        >>> "out" in result
+        True
         """
         if pipeline_name not in self._pipelines:
             raise KeyError(f"Pipeline '{pipeline_name}' not found.")
@@ -136,25 +237,52 @@ class OrchestratorEngine:
         return context
 
     def pause(self, pipeline_name: Optional[str] = None) -> None:
-        """Pause execution of a pipeline (or all pipelines)."""
+        """Pause execution of a pipeline (or all pipelines at once).
+
+        Parameters
+        ----------
+        pipeline_name : str, optional
+            Currently unused — pauses all running pipelines.
+        """
         self._paused = True
         logger.info("Pipeline execution paused")
 
     def resume(self, pipeline_name: Optional[str] = None) -> None:
-        """Resume a paused pipeline."""
+        """Resume a paused pipeline.
+
+        Parameters
+        ----------
+        pipeline_name : str, optional
+            Currently unused — resumes all paused pipelines.
+        """
         self._paused = False
         logger.info("Pipeline execution resumed")
 
     def is_running(self) -> bool:
-        """Check if any pipeline is currently running."""
+        """Check if any pipeline is currently running.
+
+        Returns
+        -------
+        bool
+            ``True`` if a pipeline is actively executing.
+        """
         return self._running
 
     def is_paused(self) -> bool:
-        """Check if pipeline execution is paused."""
+        """Check if pipeline execution is paused.
+
+        Returns
+        -------
+        bool
+            ``True`` if execution is paused.
+        """
         return self._paused
 
     def shutdown(self) -> None:
-        """Cancel all pending asyncio tasks."""
+        """Cancel all pending asyncio tasks and reset engine state.
+
+        Call this during application teardown to clean up resources.
+        """
         for t in self._tasks:
             t.cancel()
         self._tasks.clear()
@@ -166,12 +294,25 @@ class OrchestratorEngine:
     # ------------------------------------------------------------------
 
     async def _process_stage(self, stage: Dict[str, Any], inputs: Dict[str, Any]) -> Any:
-        """Process a single stage.  Override point for subclasses."""
+        """Process a single stage.  Override point for subclasses.
+
+        Parameters
+        ----------
+        stage : dict
+            Stage definition from the pipeline.
+        inputs : dict
+            Resolved context inputs for this stage.
+
+        Returns
+        -------
+        Any
+            Processing result, typically a dict or scalar.
+        """
         agent_type = stage.get("agent_type", "pass-through")
         stage_name = stage.get("name", "unnamed")
         logger.debug("Processing stage '%s' with agent '%s'", stage_name, agent_type)
 
-        # Simulated delay so async behavior is observable
+        # Simulated delay so async behaviour is observable
         await asyncio.sleep(0.1)
 
         # If inputs are empty, provide a sensible default
