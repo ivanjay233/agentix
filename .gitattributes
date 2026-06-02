@@ -1,0 +1,18 @@
+*.py text diff=python
+*.md text
+*.toml text
+*.yaml text
+*.yml text
+*.json text
+*.cfg text
+*.ini text
+*LICENSE* -text
+*.png binary
+*.jpg binary
+*.ico binary
+*.svg text
+*.css text
+*.html text
+
+# Always use LF line endings
+* text=auto eol=lf
