@@ -28,3 +28,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # agentix v0.1.4
 # agentix v0.1.5
 # agentix v0.1.6
+# agentix v0.1.7
