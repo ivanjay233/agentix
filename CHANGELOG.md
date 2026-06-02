@@ -24,3 +24,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Packaging** — PyPI-compatible `pyproject.toml` with dev extras.
 # agentix v0.1.1
 # agentix v0.1.2
+# agentix v0.1.3
