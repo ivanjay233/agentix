@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from agentix.pipeline import Pipeline
 from agentix.kanban import KanbanBoard, Task, TaskStatus
+from agentix.priority import Priority
 
 logger = logging.getLogger("agentix")
 

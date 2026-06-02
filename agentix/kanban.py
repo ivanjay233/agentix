@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from agentix.priority import Priority
+
 
 class TaskStatus(str, Enum):
     """Possible states for a task on the Kanban board.
@@ -62,6 +64,7 @@ class Task:
         stage: str = "",
         agent: str = "",
         status: TaskStatus = TaskStatus.TODO,
+        priority: Priority = Priority.MEDIUM,
         artifacts: Any = None,
     ) -> None:
         self.id: str = id or uuid.uuid4().hex[:12]
@@ -69,6 +72,7 @@ class Task:
         self.stage: str = stage
         self.agent: str = agent
         self.status: TaskStatus = status
+        self.priority: Priority = priority
         self.artifacts: Any = artifacts
         self.created_at: datetime = datetime.now(timezone.utc)
         self.updated_at: datetime = datetime.now(timezone.utc)
@@ -95,7 +99,7 @@ class Task:
         Returns
         -------
         dict
-            Contains keys: id, title, stage, agent, status, created_at, updated_at.
+            Contains keys: id, title, stage, agent, status, priority, created_at, updated_at.
         """
         return {
             "id": self.id,
@@ -103,6 +107,7 @@ class Task:
             "stage": self.stage,
             "agent": self.agent,
             "status": self.status.value,
+            "priority": self.priority.name,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -290,6 +295,24 @@ class KanbanBoard:
             if task.agent == agent:
                 result.append(task)
         return result
+
+    def get_tasks_sorted_by_priority(self, reverse: bool = True) -> List[Task]:
+        """Return all tasks sorted by priority (highest first by default).
+
+        Parameters
+        ----------
+        reverse : bool
+            If True (default), highest priority first.
+            If False, lowest priority first.
+
+        Returns
+        -------
+        list of Task
+            All tasks sorted by priority value.
+        """
+        tasks = list(self._all_tasks().values())
+        tasks.sort(key=lambda t: t.priority.value, reverse=reverse)
+        return tasks
 
     def clear(self) -> None:
         """Remove all tasks from every column, resetting the board."""
