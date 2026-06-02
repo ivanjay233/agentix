@@ -39,3 +39,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # agentix v0.1.15
 # agentix v0.1.16
 # agentix v0.1.17
+# agentix v0.1.18
