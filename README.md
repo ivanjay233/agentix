@@ -66,6 +66,29 @@ agentix is built on three layers:
 └─────────────────────────────────────────────────┘
 ```
 
+```mermaid
+graph TD
+    subgraph Pipeline
+        A[Stage: write] --> B[Stage: review]
+        B --> C[Stage: format]
+    end
+    subgraph KanbanBoard
+        D[todo] --> E[in_progress]
+        E --> F[review]
+        F --> G[done]
+    end
+    subgraph Agents
+        H[CodexAgent]
+        I[ReviewAgent]
+    end
+    A --> D
+    B --> F
+    C --> G
+    H --> A
+    I --> B
+    H --> C
+```
+
 | Layer | Role |
 |---|---|
 | **Pipeline** | Defines *what* happens — a directed graph of stages, each with typed inputs and outputs |
