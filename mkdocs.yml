@@ -1,0 +1,13 @@
+site_name: Agentix
+site_description: Multi-agent workflow orchestration with Kanban boards
+repo_url: https://github.com/ivanjay233/agentix
+theme: material
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - API Reference:
+    - Pipeline: api/pipeline.md
+    - KanbanBoard: api/kanban.md
+    - OrchestratorEngine: api/engine.md
+    - CLI: api/cli.md
+  - Examples: examples.md
