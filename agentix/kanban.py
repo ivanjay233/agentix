@@ -15,12 +15,40 @@ from typing import Any, Dict, List, Optional
 
 from agentix.priority import Priority
 
+# Valid status transitions
+VALID_TRANSITIONS = {
+    "todo": ["in_progress"],
+    "in_progress": ["review", "done"],
+    "review": ["in_progress", "done"],
+    "done": [],
+}
+
+
+def is_valid_transition(from_status: str, to_status: str) -> bool:
+    """Check if a task status transition is valid.
+
+    Parameters
+    ----------
+    from_status : str
+        Current status value.
+    to_status : str
+        Desired new status value.
+
+    Returns
+    -------
+    bool
+        True if the transition is allowed.
+    """
+    allowed = VALID_TRANSITIONS.get(from_status, [])
+    return to_status in allowed
+
 
 class TaskStatus(str, Enum):
     """Possible states for a task on the Kanban board.
 
     Transition flow:
         TODO -> IN_PROGRESS -> REVIEW -> DONE
+        REVIEW -> IN_PROGRESS (rework)
     """
 
     TODO = "todo"
@@ -46,6 +74,8 @@ class Task:
         Current board column status (default: TODO).
     artifacts : Any, optional
         Output data produced when the task completes.
+    assignee : str, optional
+        Person or system responsible for this task.
 
     Examples
     --------
@@ -66,6 +96,7 @@ class Task:
         status: TaskStatus = TaskStatus.TODO,
         priority: Priority = Priority.MEDIUM,
         artifacts: Any = None,
+        assignee: str = "",
     ) -> None:
         self.id: str = id or uuid.uuid4().hex[:12]
         self.title: str = title
@@ -74,8 +105,20 @@ class Task:
         self.status: TaskStatus = status
         self.priority: Priority = priority
         self.artifacts: Any = artifacts
+        self.assignee: str = assignee
         self.created_at: datetime = datetime.now(timezone.utc)
         self.updated_at: datetime = datetime.now(timezone.utc)
+
+    def assign(self, assignee: str) -> None:
+        """Assign this task to a person or system.
+
+        Parameters
+        ----------
+        assignee : str
+            Name or identifier of the assignee.
+        """
+        self.assignee = assignee
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_status(self, new_status: TaskStatus) -> None:
         """Transition this task to a new status.
@@ -85,11 +128,25 @@ class Task:
         new_status : TaskStatus
             The target status to transition to.
 
+        Raises
+        ------
+        ValueError
+            If the transition is not allowed by VALID_TRANSITIONS.
+
         Notes
         -----
-        Does NOT validate transition legality (e.g. skipping columns).
-        Callers should implement their own guards if needed.
+        Valid transitions:
+            todo -> in_progress
+            in_progress -> review, done
+            review -> in_progress, done
         """
+        from_status = self.status.value
+        to_status = new_status.value
+        if not is_valid_transition(from_status, to_status):
+            raise ValueError(
+                f"Invalid status transition: '{from_status}' -> '{to_status}'. "
+                f"Allowed from '{from_status}': {VALID_TRANSITIONS.get(from_status, [])}"
+            )
         self.status = new_status
         self.updated_at = datetime.now(timezone.utc)
 
@@ -99,7 +156,8 @@ class Task:
         Returns
         -------
         dict
-            Contains keys: id, title, stage, agent, status, priority, created_at, updated_at.
+            Contains keys: id, title, stage, agent, status, priority,
+            assignee, created_at, updated_at.
         """
         return {
             "id": self.id,
@@ -108,6 +166,7 @@ class Task:
             "agent": self.agent,
             "status": self.status.value,
             "priority": self.priority.name,
+            "assignee": self.assignee,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -255,6 +314,7 @@ class KanbanBoard:
         -------
         dict of str -> list of dict
             Keys are column names; values are lists of serialized task dicts.
+            Returns empty lists for columns with no tasks.
         """
         state: Dict[str, List[Dict[str, Any]]] = {}
         for col in self.VALID_COLUMNS:
@@ -293,6 +353,25 @@ class KanbanBoard:
         result: List[Task] = []
         for task in self._all_tasks().values():
             if task.agent == agent:
+                result.append(task)
+        return result
+
+    def tasks_by_assignee(self, assignee: str) -> List[Task]:
+        """Return all tasks assigned to a specific person.
+
+        Parameters
+        ----------
+        assignee : str
+            Assignee name to filter by.
+
+        Returns
+        -------
+        list of Task
+            All tasks whose ``assignee`` field matches.
+        """
+        result: List[Task] = []
+        for task in self._all_tasks().values():
+            if task.assignee == assignee:
                 result.append(task)
         return result
 
