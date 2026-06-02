@@ -1,0 +1,28 @@
+name: content_gen
+stages:
+  - name: write
+    agent_type: codex
+    input_keys:
+      - topic
+    output_keys:
+      - draft
+    depends_on: []
+
+  - name: review
+    agent_type: review
+    input_keys:
+      - draft
+    output_keys:
+      - review_report
+    depends_on:
+      - write
+
+  - name: format
+    agent_type: codex
+    input_keys:
+      - draft
+      - review_report
+    output_keys:
+      - final
+    depends_on:
+      - review
