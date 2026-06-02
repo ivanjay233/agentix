@@ -190,6 +190,10 @@ class OrchestratorEngine:
         context: Dict[str, Any] = dict(inputs or {})
         logger.info("Starting pipeline '%s'", pipeline_name)
 
+        if not pipeline.stages:
+            logger.info("Pipeline '%s' has no stages — returning inputs as context", pipeline_name)
+            return context
+
         try:
             for stage in pipeline.stages:
                 if self._paused:
