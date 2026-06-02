@@ -22,3 +22,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI/CD** — GitHub Actions workflow for linting (ruff) and testing (pytest) across Python 3.10–3.12.
 - **Documentation** — README with quick-start, architecture overview, and CLI reference; CONTRIBUTING.md for contributors.
 - **Packaging** — PyPI-compatible `pyproject.toml` with dev extras.
+# agentix v0.1.1
