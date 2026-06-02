@@ -47,6 +47,77 @@ result = asyncio.run(engine.run("content_gen", inputs={"topic": "hello world"}))
 print(result["final"])
 ```
 
+### Using YAML pipeline definitions
+
+```python
+from agentix.pipeline import Pipeline
+
+# Load from a YAML file
+pipeline = Pipeline.from_yaml_file("examples/pipeline.yaml")
+print(pipeline.name)  # "content_gen"
+
+# Or deserialize from a string
+yaml_str = """
+name: summarize
+stages:
+  - name: fetch
+    agent_type: scraper
+    output_keys: [raw_text]
+  - name: summarize
+    agent_type: codex
+    input_keys: [raw_text]
+    output_keys: [summary]
+"""
+pipeline2 = Pipeline.from_yaml(yaml_str)
+```
+
+### Building pipelines programmatically
+
+```python
+from agentix.pipeline import Pipeline
+
+p = Pipeline(name="data_etl")
+p.add_stage("extract", agent_type="reader", output_keys=["raw_data"])
+p.add_stage("validate", agent_type="validator", input_keys=["raw_data"], output_keys=["valid", "errors"], depends_on=["extract"])
+p.add_stage("load", agent_type="writer", input_keys=["valid"], output_keys=["stored"], depends_on=["validate"])
+
+# Check the execution order
+print(p.topological_sort())  # ['extract', 'validate', 'load']
+print(p.to_yaml())           # serialize to YAML
+```
+
+### Writing a custom agent
+
+```python
+import asyncio
+from agentix.agents.base import BaseAgent
+
+class TranslationAgent(BaseAgent):
+    def __init__(self, name="translator", config=None):
+        super().__init__(name=name, config=config or {"target_lang": "es"})
+        self._count = 0
+
+    async def process(self, task):
+        text = task.get("content", "") if isinstance(task, dict) else str(task)
+        target = self.config.get("target_lang", "es")
+        self._count += 1
+        # In production, call a translation API here
+        return {"translated": f"[{target}] {text}", "language": target}
+
+    def validate(self):
+        return True
+
+    def report(self):
+        return f"Translated {self._count} text(s)"
+
+# Use it in a pipeline
+engine = OrchestratorEngine()
+engine.create_pipeline("translate", stages=[
+    {"name": "translate", "agent_type": "translator", "input_keys": ["text"], "output_keys": ["translated"]},
+])
+result = asyncio.run(engine.run("translate", inputs={"text": "Hello world"}))
+print(result["translated"])
+
 ---
 
 ## Architecture
